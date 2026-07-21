@@ -4,6 +4,8 @@
 Tests for MergeOp architecture - type-safe merge operations.
 """
 
+import pytest
+
 from openviking.session.memory.dataclass import (
     MemoryField,
 )
@@ -12,6 +14,7 @@ from openviking.session.memory.merge_op import (
     MergeOp,
     MergeOpFactory,
     PatchOp,
+    PatchParseError,
     SearchReplaceBlock,
     StrPatch,
     SumOp,
@@ -268,6 +271,29 @@ class TestApplyStrPatch:
         result = apply_str_patch(original, patch)
         # Directly test apply_str_patch
         assert result == "hello there"
+
+    def test_duplicate_search_is_rejected(self):
+        """Ambiguous SEARCH content must fail instead of replacing globally."""
+        original = "status: pending\nstatus: pending"
+        patch = StrPatch(
+            blocks=[SearchReplaceBlock(search="status: pending", replace="status: done")]
+        )
+
+        with pytest.raises(PatchParseError, match="matched 2 locations"):
+            apply_str_patch(original, patch)
+
+    def test_duplicate_search_after_prior_block_is_rejected(self):
+        """A later ambiguous block must not return a partially applied patch."""
+        original = "title\nstatus: pending\nstatus: pending"
+        patch = StrPatch(
+            blocks=[
+                SearchReplaceBlock(search="title", replace="updated title"),
+                SearchReplaceBlock(search="status: pending", replace="status: done"),
+            ]
+        )
+
+        with pytest.raises(PatchParseError, match="matched 2 locations"):
+            apply_str_patch(original, patch)
 
     def test_numbered_multiline_patch_uses_inferred_start_line(self):
         """Tab-prefixed read output should target the numbered range."""
